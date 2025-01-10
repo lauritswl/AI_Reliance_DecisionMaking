@@ -1,0 +1,89 @@
+########################################################
+### JAGS code for First Stage of Advice Taking Model ###
+###                Defining model:                   ###
+########################################################
+
+# Loops are indexed by the following variables
+# NO(o) --> Number of observations, index by [o], defined as all combinations of NI and NS
+# NS(i) --> Number of participants, indexed by [i]
+# NI(j) --> Number of images, indexed by [j], defined as combinations of all NN and NL.
+# NN(n) --> Number of noise types, indexed by [n]
+# NL(l)  --> Number of Labels, indexed by [l]
+
+
+model{
+    ################################
+  ###      1. Defining priors:     ###
+   ################################## 
+  ###       Item (j) priors:       ###
+    ################################
+    
+  for (j in 1:NI) { 
+     d[j] ~ dunif( -4 , 4 ) # difficulty, wide uniform to account for strong noise-filtes
+     s[j] ~ dnorm( 1,1 )T(0,) # discrimination,  truncated as it is a scaling factor
+     } # Exit item j
+  
+    #################################
+   ##     Particpant (i) priors:    ##
+    #################################
+  for (i in 1:NS) {
+     a[i] ~ dnorm(0, 2)
+     } # Exit participant i
+  
+    ################################
+  ###    2. Define causal model:   ###
+    ################################ 
+  ###   for each observation (o)   ###
+    ################################  
+  
+  for (o in 1:NO) { 
+    ### Define theta ###         
+    logoddstheta[o] <- s[jid[o]] * a[iid[o]] - d[jid[o]]
+    theta[o] <- 1 / ( 1 + exp( -logoddstheta[o] ))
+ 
+    for (l in 1:NL) {
+         dlbl[o,l] <- ifelse( z[o]==l, theta[o], (1-theta[o]) / (NL-1))
+     } # Exit labels l
+    
+    
+    
+    ################################
+  ### 2. Update using likelihood:  ###
+    ################################    
+    lbl[o] ~ dcat( dlbl[o,1:NL] )	# Fit to likelihood
+    pst_lbl[o] ~  dcat( dlbl[o,1:NL] ) # Sample a posterior label from label distribution
+  
+  } # exit observations, o
+} # exit model
+
+################################################################################
+###                    DICTIONARY FOR TERM EXPLANATION:                      ###
+################################################################################
+
+### Input data: ###
+#    NO          Number of observations, index by [o], defined as all combinations of NI and NS
+#    NS          Number of participants, indexed by [i]
+#    NI          Number of images, indexed by [j], defined as combinations of all NN and NL.
+#    NN          Number of noise types, indexed by [n]
+#    NL          Number of Labels, indexed by [l]
+#    jid(o)      Item index for observation o
+#    iid(o)      Participant index for observation o
+#    z(o)        True label for obervervation o
+#    lbl(o)      Label in the no-advice condition (Human Prediction)
+
+### Key Latent Parameters returned by model: ###
+#    a[i]        ability participant i 
+#    s[j]        discrimination parameter item j
+#    d[j]        difficulty item j
+#    theta[o]    prop of correct observation in o
+#    pst_lbl[o]  sampled distribution from posterior lbl choice distribution
+
+
+
+### ----------------------------------------------------------  ###
+###        Definition of label distribution dlbl[o]:            ###
+### ----------------------------------------------------------  ###
+###     Define the choice distribution for all observations:     ##
+### P(lbl[o] = z[o]) = theta[o], P(lbl[o] != z[0]) = 1-theta[o]  ##
+### If P(lbl[o] != z[0]), then sample from uniform distribution  ##
+### ----------------------------------------------------------- ###   

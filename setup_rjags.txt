@@ -1,0 +1,5 @@
+# Installing JAGS and R2jags on ucloud:
+# Launch RStudio >
+# Open terminal >
+sudo apt update
+sudo apt install jags

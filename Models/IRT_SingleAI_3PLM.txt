@@ -1,0 +1,98 @@
+########################################################
+### JAGS code for First Stage of Advice Taking Model ###
+###                Defining model:                   ###
+########################################################
+
+# Loops are indexed by the following variables
+# NO(o) --> Number of observations, index by [o], defined as all combinations of NI and NS
+# NS(i) --> Number of participants, indexed by [i]
+# NI(j) --> Number of images, indexed by [j], defined as combinations of all NN and NL.
+# NN(n) --> Number of noise types, indexed by [n]
+# NL(l)  --> Number of Labels, indexed by [l]
+
+model{
+
+  #################################
+  ###        1. Priors:          ###
+  #################################
+
+  ### Item (j) priors:
+  for (j in 1:NI) {
+    d[j] ~ dunif(-4, 4)                     # Difficulty
+    s[j] ~ dnorm(1, 1)T(0,)                 # Discrimination
+  }                                         # Exit item j
+
+  ### Participant (i) priors:
+  for (i in 1:NS) {
+    a[i] ~ dnorm(0, 2)                     # Ability
+    alpha[i] ~ dbeta(2, 2)                 # AI reliance
+  }                                        # Exit participant i
+
+  #################################
+  ### 2. Causal Model for AI:    ###
+  #################################
+  for (o in 1:NO) {
+    ### Define theta for human decisions:
+    logoddstheta[o] <- s[jid[o]] * a[iid[o]] - d[jid[o]]
+    theta[o] <- 1 / (1 + exp(-logoddstheta[o]))
+
+    ### Define human-only decision probabilities:
+    for (l in 1:NL) {
+      dlbl[o, l] <- ifelse(z[o] == l, theta[o], (1 - theta[o]) / (NL - 1))
+    } # exit label l                                                                         
+
+    ### Define AI-assisted decision probabilities:
+    p_correct[o] <- 
+      ifelse(lbl[o] == z[o] && ai_lbl[o] == z[o],     # Both correct
+             theta[o] + (1 - theta[o]) * alpha[iid[o]],  # --> Human choice or switch to AI
+      ifelse(lbl[o] == z[o] && ai_lbl[o] != z[o],     # Human correct, AI wrong
+             theta[o] * (1 - alpha[iid[o]]) + (1 - theta[o]) * (alpha[iid[o]]/(NL - 1)),  # --> Human correct or switch to correct AI guess 
+      ifelse(lbl[o] != z[o] && ai_lbl[o] == z[o],                                      # Human wrong, AI correct
+             (1 - theta[o]) / (NL - 1) + (1 - (1 - theta[o]) / (NL - 1)) * alpha[iid[o]], # --> Human correct guess or switch to AI  
+             (1 - theta[o]) / (NL - 1) * (1 - alpha[iid[o]]) + (1-  (1 - theta[o]) / (NL - 1))*(alpha[iid[o]])  # Both wrong --> Human guess correct and no switch or switch to correct AI guess
+      )))
+
+    ### Define AI-assisted choice distribution:
+    for (l in 1:NL) {
+      dlblAI[o, l] <- ifelse(z[o] == l, p_correct[o], (1 - p_correct[o]) / (NL - 1))
+    } # exit label l
+
+    #################################
+    ### 3. Update Likelihoods:     ###
+    #################################
+
+    ### Likelihood for human-only decisions:
+    lbl[o] ~ dcat(dlbl[o, 1:NL]) # fit to label
+    pst_lbl[o] ~  dcat(dlbl[o, 1:NL]) # Sample a posterior label from label distribution    
+
+    ### Likelihood for AI-assisted decisions:
+    ai_hum_lbl[o] ~ dcat(dlblAI[o, 1:NL]) # fit to label
+    pst_ai_lbl[o] ~ dcat(dlblAI[o, 1:NL]) # Sample a posterior label from label distribution
+  } # exit observations, o
+} # exit model
+
+################################################################################
+###                    DICTIONARY FOR TERM EXPLANATION:                      ###
+################################################################################
+
+### Input data: ###
+#    NO          Number of observations, index by [o], defined as all combinations of NI and NS
+#    NS          Number of participants, indexed by [i]
+#    NI          Number of images, indexed by [j], defined as combinations of all NN and NL.
+#    NN          Number of noise types, indexed by [n]
+#    NL          Number of Labels, indexed by [l]
+#    jid(o)      Item index for observation o
+#    iid(o)      Participant index for observation o
+#    z(o)        True label for observation o
+#    lbl(o)      Label in the no-advice condition (Human Prediction)
+#    ai_lbl[o]   Label in the advice condition, for observation o given the AI model
+#    ai_hum_lbl[o] Label in the advice condition, for observation o given the AI model
+
+### Key Latent Parameters returned by model: ###
+#    a[i]        ability participant i 
+#    alpha[i]    AI reliance participant i
+#    s[j]        discrimination parameter item j
+#    d[j]        difficulty item j
+#    theta[o]    correct observation skill in o
+#    p_correct[o] prob correct observation (o) for model
+#    pst_lbl[o]  sampled distribution from posterior lbl choice distribution

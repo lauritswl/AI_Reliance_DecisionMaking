@@ -1,0 +1,74 @@
+# JAGS code for First Stage of Advice Taking Model
+
+# Data
+#    N0          Number of instances in advice off condition
+#    N1          Number of instances in advice on condition
+#    NS          Number of participants    
+#    NI          Number of images  
+#    L           Number of labels           
+#    pid(i)      Item index for observation u
+#    uid(i)      Participant index for observation i 
+#    z(i)        True label for obervervation i
+#    lbl0(i)     Label in the no-advice condition
+#    r0(i)       Confidence rating for observation i in advice off condition
+
+# Key Latent Parameters
+#    a[i]        ability participant i 
+#    s[j]        discrimination parameter item j
+#    d[j]        difficulty item j
+#   r1[i]        Predicted confidence rating for observation i in advice on condition
+
+model{
+  # Loop over observations in advice off condition
+  for (i in 1:N0) { 
+     # Compute probability correct label will be used for participant uid[i] and item pid[i]            
+     logoddstheta0[ i ] <- s[pid0[i]] * a[uid0[i]] - d[pid0[i]]
+     theta0[ i ] <- 1 / ( 1 + exp( -logoddstheta0[i] ))
+      
+     # Generate confidence rating
+     r0[i] ~ dordered.probit( theta0[i]*tau[uid0[i]] , v[uid0[i],1:2]*tau[uid0[i]] )     
+
+     # Generate confidence rating (posterior predictive -- for checking the model)
+     rp0[i] ~ dordered.probit( theta0[i]*tau[uid0[i]] , v[uid0[i],1:2]*tau[uid0[i]] )
+
+     # Create a matrix ps[i,j] where ps[i,j] is the probability of correctly labeling if the true label for observation i is j
+     for (j in 1:L) {
+         ps0[i,j] <- ifelse( z0[i]==j , theta0[i], (1-theta0[i]) / (L-1))
+     }
+
+     # Sample a label
+     lbl0[i] ~ dcat( ps0[i,1:L] )	
+  }
+
+#  # Loop over observations in advice on condition
+#  for (i in 1:N1) { 
+#     # Compute probability correct label will be used for participant uid[i] and item pid[i]            
+#     logoddstheta1[ i ] <- s[pid1[i]] * a[uid1[i]] - d[pid1[i]]
+#     theta1[ i ] <- 1 / ( 1 + exp( -logoddstheta1[i] ))
+#      
+#     # Generate confidence rating (latent)
+#     r1[i] ~ dordered.probit( theta1[i]*tau[uid1[i]] , v[uid1[i],1:2]*tau[uid1[i]] )     	
+#  }
+
+
+  # Priors for ability
+  for (i in 1:NS) { 
+     a[i] ~ dnorm( 0, 1 )
+  }
+
+  # Priors for item difficulty and discrimination
+  for (j in 1:NI) {
+     d[j] ~ dunif( -10 , 10 )
+     s[j] ~ dnorm( 1,1 )I(0,)
+  }
+
+  for (i in 1:NS) { 
+     # Uniform prior over cutpoints for the ordered probit model
+     vu[i,1] ~ dunif( 0,1 )
+     vu[i,2] ~ dunif( 0,1 )
+     v[i,1:2] <- sort( vu[i,1:2] )
+
+     tau[i] ~ dunif( 0 , 15 )
+     sigma[i] <- 1/tau[i]
+  } 
+}

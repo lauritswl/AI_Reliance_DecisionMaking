@@ -1,0 +1,66 @@
+# JAGS code for First Stage of Advice Taking Model
+
+# Data
+#    NO          Number of instances in advice off condition
+#    NS          Number of participants    
+#    NI          Number of images
+#    L           Number of labels           
+#    jid(o)      Item index for observation o
+#    iid(o)      Participant index for observation o
+#    z(o)        True label for obervervation o
+#    lbl(o)      Label in the no-advice condition (Human Prediction)
+#    r(o)        Confidence rating for observation o in advice off condition (numeric factor)
+
+# Key Latent Parameters
+#    a[i]        ability participant i 
+#    s[j]        discrimination parameter item j
+#    d[j]        difficulty item j
+#    v[i,1:2]    cutpoints participant i
+#    theta[ o ]    prop correct for observation o
+
+model{
+  # Loop over observations in advice off condition
+  for (o in 1:NO) { 
+     
+     # Compute probability correct label will be used for participant iid[o] and item jid[o] 
+     
+     logoddstheta[ o ] <- s[jid[o]] * a[iid[o]] - d[jid[o]]
+     theta[ o ] <- 1 / ( 1 + exp( -logoddstheta[o] ))
+     theta_noise[ o ] ~  dnorm(theta[o], tau[iid[o]]) # Latent variable for ordinal probit
+
+     # Create a matrix ps[o,j] where ps[o,j] is the probability of correctly labeling if the true label for observation o is j
+     for (j in 1:L) {
+         ps0[o,j] <- ifelse( z[o]==j , theta[o], (1-theta[o]) / (L-1))
+         }
+
+     # Likelihood: Match predicted category with observed category
+     lbl[o] ~ dcat( ps0[o,1:L] )	
+     
+     
+     # Generate confidence
+     prob_category[o, 1] <- step(v1[iid[o]] - theta_noise[o])  # Category A
+     prob_category[o, 2] <- step(theta_noise[o] - v1[iid[o]]) * step(v2[iid[o]] - theta_noise[o])  # Category B
+     prob_category[o, 3] <- step(theta_noise[o] - v2[iid[o]])  # Category C
+     
+     # Normalize probabilities
+     r[o] ~ dcat(prob_category[o, 1:3])
+  }
+    
+
+  # Priors for item difficulty and discrimination
+  for (j in 1:NI) {
+     d[j] ~ dunif( -10 , 10 )
+     s[j] ~ dnorm( 1,1 )T(0,)
+  }
+  # Prioirs for 
+  for (i in 1:NS) { 
+     # Prioirs for ability
+     a[i] ~ dnorm( 0, 1 )
+     # Priors for the cutoffs
+     v1[i] ~ dunif(0, 1)  # First cutoff is uniform between 0 and 1
+     v2[i] ~ dunif(v1[i], 1) # Second cutoff is uniform between v1 and 1 (ensures v1 < v2)
+     # Priors for standard error regarding certanty cutoffs
+     tau[i] ~ dunif(0, 15)
+     sigma[i] <- 1/tau[i]
+  } 
+}

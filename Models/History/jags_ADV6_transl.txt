@@ -1,0 +1,59 @@
+# JAGS code for Second Stage of Advice Taking Model: 
+
+# Data
+#    N1          Number of instances in advice on condition
+#    NS          Number of participants    
+#    NI          Number of images  
+#    L           Number of labels   
+#    C           Number of Confidence Ratings
+#    NC          Number of Classifiers
+#    NB          Number of Bins
+#    cid1(i)     Classifier index for observation i
+#    pid1(i)     Item index for observation i
+#    uid1(i)     Participant index for observation i 
+#    truelbl1(i) True label
+#    lbl1(i)     Label in the advice on condition
+#    c1(i)       Confidence rating for observation i 
+
+model{
+  # Loop over observations in advice on condition
+  for (i in 1:N1) { 
+     logit( pswitch[ i ] ) <- alphaind[uid1[i],c1[i],cid1[i],modelscrbin[ i ]]
+
+     # Create a matrix    
+     for (j in 1:L) {
+         # Probability user picks label j without advice
+         ps0[i,j] <- ifelse( truelbl1[i]==j , pc1[i], (1-pc1[i]) / (L-1))
+         ps1[i,j] <- ifelse( clsflbl1[i]==j , ps0[i,j] + ( 1-ps0[i,j] ) * pswitch[i] , ps0[i,j] * (1-pswitch[i]))
+     }
+
+     # Sample a label after advice
+     lbl1[i] ~ dcat( ps1[i,1:L] ) 
+
+     # Probability of correct decision
+     pcorr[i] <- ifelse( clsflbl1[i]==truelbl1[i] , pc1[i] + (1-pc1[i])*pswitch[i] , pc1[i]*(1-pswitch[i]))    	
+  }
+
+  for (i in 1:NS) {
+     for (j in 1:NC) {
+        for (b in 1:NB) {
+           for (r in 1:C) {         
+              alphaindu[i,r,j,b] ~ dnorm( alpha[r,j,b] ,1/(stdalpha^2))
+           }
+           alphaind[i,1:C,j,b] <- sort( alphaindu[i,1:C,j,b] )         
+        }
+     }
+  }  
+
+  for (j in 1:NC) {
+     for (b in 1:NB) {
+        for (r in 1:C) {         
+           alphau[r,j,b] ~ dnorm( 0,0.1 )
+        }
+        alpha[1:C,j,b] <- sort( alphau[1:C,j,b] )
+     }
+  }
+
+  w ~ dnorm(0,1)
+  stdalpha ~ dunif(0,5)
+}
