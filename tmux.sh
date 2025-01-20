@@ -17,7 +17,7 @@ else
     SEED=$((1))
 
     # Send a command to the first pane
-    tmux send-keys -t "$SESSION_NAME:0.0" "./Scripts/Simulate_AI_3PLM.R $SEED" C-m
+    tmux send-keys -t "$SESSION_NAME:0.0" "AI_Reliance_DecisionMaking/Scripts/Simulate_AI_3PLM.R $SEED" C-m
 
     # Attach to the created session
     tmux attach-session -t $SESSION_NAME

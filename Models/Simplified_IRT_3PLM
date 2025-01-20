@@ -25,7 +25,6 @@ model{
   ### Participant (i) priors:
   for (i in 1:NS) {
     a[i] ~ dnorm(0, 2)                            # Ability
-      # AI reliance
   }                                        # Exit participant i
 
   alpha_sd ~ dnorm(10, 1)
@@ -37,17 +36,21 @@ model{
     ### Define theta for human decisions:
     logoddstheta[o] <- s[jid[o]] * (a[iid[o]] - d[jid[o]])
     theta[o] <- 1 / (1 + exp(-logoddstheta[o]))
-    ai_theta[o] ~ dbeta(2,2)T(0.001,0.999)
     
-    alpha[o] ~ dbeta(alpha_sd*ai_theta[o], alpha_sd*theta[o])T(0.001,0.999)
-    probs_correct[o] <- theta[o]*(1-alpha[o]) + alpha[o]*ai_theta[o]
+    for (l in 1:NL) {
+      dlbl[o,l] <- ifelse(z[o] == l, theta[o], (1-theta[o])/(NL-1))
+    } # exit label l
     
     ### Define AI assisted choice:
-    for (l in 1:NL) {
-      dlblHumAI[o, l] <- ifelse(z[o] == l, probs_correct[o], (1-probs_correct[o])/(NL-1))
-      dlblAI[o, l] <- ifelse(z[o] == l, ai_theta[o], (1-ai_theta[o])/(NL-1))
-      dlbl[o,l] <- ifelse(z[o] == l, theta[o], (1-theta[o])/(NL-1))
-    } # exit label l                                                                         
+    for (ai in 1:NAI) {
+      ai_theta[o, ai] ~ dbeta(2,2)T(0.001,0.999)
+      alpha[o, ai] ~ dbeta(alpha_sd*ai_theta[o, ai], alpha_sd*theta[o])T(0.001,0.999)
+      probs_correct[o, ai] <- theta[o]*(1-alpha[o, ai]) + alpha[o, ai]*ai_theta[o, ai]
+      for (l in 1:NL) {
+        dlblHumAI[o, l, ai] <- ifelse(z[o] == l, probs_correct[o, ai], (1-probs_correct[o, ai])/(NL-1))
+        dlblAI[o, l, ai] <- ifelse(z[o] == l, ai_theta[o, ai], (1-ai_theta[o, ai])/(NL-1))
+        } # exit label l                                                                          
+      } # exit AI-model ai 
 
     ### Define AI-assisted decision probabilities:
 
@@ -57,16 +60,14 @@ model{
 
     ### Likelihood for human-only decisions:
     lbl[o] ~ dcat(dlbl[o, 1:NL])
-    ai_lbl[o] ~ dcat(dlblAI[o, 1:NL]) # fit to label
+    pst_lbl[o] ~  dcat(dlbl[o, 1:NL]) # Sample a posterior label from label distribution    
     
-    
-    
-    #pst_lbl[o] ~  dcat(dlbl[o, 1:NL]) # Sample a posterior label from label distribution    
-    
-
+    for (ai in 1:NAI) {
     ### Likelihood for AI-assisted decisions:
-    ai_hum_lbl[o] ~ dcat(dlblHumAI[o, 1:NL]) # fit to label
-    pst_ai_lbl[o] ~ dcat(dlblHumAI[o, 1:NL]) # Sample a posterior label from label distribution
+      ai_lbl[o, ai] ~ dcat(dlblAI[o, 1:NL, ai]) # fit to label
+      ai_hum_lbl[o, ai] ~ dcat(dlblHumAI[o, 1:NL, ai]) # fit to label
+      pst_ai_lbl[o, ai] ~ dcat(dlblHumAI[o, 1:NL, ai]) # Sample a posterior label from label distribution
+      } # exit AI-model ai
   } # exit observations, o
 } # exit model
 
@@ -77,15 +78,16 @@ model{
 ### Input data: ###
 #    NO          Number of observations, index by [o], defined as all combinations of NI and NS
 #    NS          Number of participants, indexed by [i]
-#    NI          Number of images, indexed by [j], defined as combinations of all NN and NL.
+#    NI          Number of images, indexed by [j], defined as combinations of all NN and NL
 #    NN          Number of noise types, indexed by [n]
+#    NAI         Number of AIs
 #    NL          Number of Labels, indexed by [l]
 #    jid(o)      Item index for observation o
 #    iid(o)      Participant index for observation o
 #    z(o)        True label for observation o
 #    lbl(o)      Label in the no-advice condition (Human Prediction)
-#    ai_lbl[o]   Label in the advice condition, for observation o given the AI model
-#    ai_hum_lbl[o] Label in the advice condition, for observation o given the AI model
+#    ai_lbl[o, ai]   Label in the advice condition, for observation o given the AI model
+#    ai_hum_lbl[o, ai] Label in the advice condition, for observation o given the AI model
 
 ### Key Latent Parameters returned by model: ###
 #    a[i]        ability participant i 

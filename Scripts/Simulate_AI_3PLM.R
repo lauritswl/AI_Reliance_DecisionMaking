@@ -18,7 +18,7 @@ sim_model <- function(nsub, nNoise, nAI,L, ai_theta_input = 0.8){
   i <- list()
   # Add elements to the list
   i$a <- rnorm(n = nsub, mean = 0.5, sd = 1) # Individual image recognition ability
-  i$alpha <- rbeta(n= nsub, shape1 = 2, shape2 = 2) # AI reliance
+  
   
   #####--------------------------------------#####
   #####   2.  Generate item parameters       #####
@@ -65,7 +65,15 @@ sim_model <- function(nsub, nNoise, nAI,L, ai_theta_input = 0.8){
   # Compute a matrix of probabilities for all AI agents and trials
   # Repeat k$ai_theta into a matrix with ntrials rows and nAI columns
   ai_theta_matrix <- matrix(rep(k$ai_theta, each = ntrials), nrow = ntrials, ncol = nAI, byrow = FALSE)
+  # Example matrix
   
+  # Add truncated noise
+  noise_sd <- 0.1  # Standard deviation of the noise
+  ai_theta_matrix <- ai_theta_matrix + matrix(rnorm(ntrials * nAI, mean = 0, sd = noise_sd), 
+                                           nrow = ntrials, ncol = nAI)
+  
+  # Truncate to [0, 1]
+  ai_theta_matrix <- pmax(pmin(ai_theta_matrix, 1), 0)
   # Generate a random uniform matrix for comparison
   random_uniform <- matrix(runif(ntrials * nAI), nrow = ntrials, ncol = nAI)
   
@@ -76,10 +84,10 @@ sim_model <- function(nsub, nNoise, nAI,L, ai_theta_input = 0.8){
   
   # Convert the matrix to a dataframe
   ai_trials <- as.data.frame(ai_responses)
-  
+  ai_theta_matrix_df <- as.data.frame(ai_theta_matrix)
   # Rename columns to reflect AI agent IDs
   colnames(ai_trials) <- paste0("ai_", 1:nAI)
-  
+  colnames(ai_theta_matrix_df)<- paste0("ai_", 1:nAI)
   # Add the trial ID column
   ai_trials <- cbind(trial_id = 1:ntrials, ai_trials)
   
@@ -90,6 +98,15 @@ sim_model <- function(nsub, nNoise, nAI,L, ai_theta_input = 0.8){
   # Initialize a matrix to store human decisions with AI aid
   human_with_ai <- matrix(NA, nrow = ntrials, ncol = nAI)
   human_with_ai_odds <-  matrix(NA, nrow = ntrials, ncol = nAI)
+  
+  ij$theta_matrix <- matrix(rep(ij$theta, each = nAI), nrow = length(ij$theta), ncol = nAI, byrow = FALSE)
+  ai_theta_matrix <- as.matrix(ai_theta_matrix_df[1:(nAI)])
+  alpha_output <- mapply(function(ai, theta) rbeta(1, shape1 = 10 * ai, shape2 = 10 * theta), 
+                         ai = as.vector(ai_theta_matrix), 
+                         theta = as.vector(ij$theta_matrix))
+  alpha_matrix <- matrix(
+    data = alpha_output,
+    nrow = nrow(ai_theta_matrix))
   # Loop over AI agents
   for (k_idx in 1:nAI) {
     # AI choices for this agent
@@ -97,14 +114,14 @@ sim_model <- function(nsub, nNoise, nAI,L, ai_theta_input = 0.8){
     # Compute probabilities for all four cases
     p_y <- ifelse(
       ij$label == ij$z  & c_jk == ij$z,                                              # If human and ai guessed correctly
-      ij$theta + (1 - ij$theta) * i$alpha[iid],                                      # Guessing correctly or guessing incorrectly and then switching to correct AI guess.
+      (1-alpha_matrix[,k_idx])+alpha_matrix[,k_idx],                                 # no switch or switch
       ifelse(
         ij$label == ij$z  & c_jk != ij$z,                                            # If human guessed correctly but ai guessed incorrectly
-        ij$theta*(1 - i$alpha[iid]) + (1 - ij$theta)*i$alpha[iid]/(L-1),               # correct guess and no switch + incorrect guess + switch
+        (1-alpha_matrix[,k_idx]),                                                    # no switch
         ifelse(                                                                        # Else check new statement
           ij$label != ij$z & c_jk == ij$z,                                             # If human guessed wrong, but ai guessed correctly
-          (1 - ij$theta) / (L - 1) + (1 - (1 - ij$theta) / (L - 1)) * i$alpha[iid],     # Then the chance of sticking with correct guess is, the chance of guessing correctly by chance or swithing to the correct ai guess. 
-          (1 - ij$theta) / (L - 1) * (1 - i$alpha[iid]) + (1-(1 - ij$theta) / (L - 1))* i$alpha[iid]/(L-1)     # If both are wrong, then the chance is: human guessing correctly, and then not switching to ai. 
+          (1-alpha_matrix[,k_idx]),                                                    # Then switch
+          0                                                                            # If both are wrong, then there is no chance of being correct.
         )
       )
     )
@@ -120,13 +137,20 @@ sim_model <- function(nsub, nNoise, nAI,L, ai_theta_input = 0.8){
   human_with_ai_df <- as.data.frame(human_with_ai)
   colnames(human_with_ai_df) <- paste0("human_with_ai_", 1:nAI)
   
+  # Name alpha
+  alpha_df <- as.data.frame(alpha_matrix)
+  colnames(alpha_df) <- paste0("alpha_ai_", 1:nAI)
+  
+  # Name theta
+  colnames(ai_theta_matrix_df) <- paste0("Theta_AI_", 1:nAI)
+  
 
   #####--------------------------------------#####
   #####          7. Return Results           #####
   #####--------------------------------------#####
   
   ### Saving Key Latent Parameters and Predictions for recovery ###
-  parameters <- tibble(iid = iid, jid = jid, a = i$a[iid], alpha = i$alpha[iid], s = j$s[jid], d = j$d[jid], theta = ij$theta, eta = j$eta[jid],lbl = ij$label, z = ij$z, prob_z = ij$prob_z, ai_theta_string = k$ai_theta_string)
-  parameters <- cbind(parameters, ai_trials[2:(nAI+1)], human_with_ai_df[1:nAI], human_with_ai_odds_df[1:nAI])
+  parameters <- tibble(iid = iid, jid = jid, a = i$a[iid], alpha = alpha_matrix[,k_idx], s = j$s[jid], d = j$d[jid], theta = ij$theta, eta = j$eta[jid],lbl = ij$label, z = ij$z, prob_z = ij$prob_z, ai_theta_string = k$ai_theta_string)
+  parameters <- cbind(parameters, ai_trials[2:(nAI+1)], human_with_ai_df[1:nAI], human_with_ai_odds_df[1:nAI], ai_theta_matrix_df[1:nAI], alpha_df[1:nAI])
   return(parameters)
 }

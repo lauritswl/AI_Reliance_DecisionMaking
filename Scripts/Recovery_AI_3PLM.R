@@ -1,10 +1,10 @@
-
 #take argument from bash
-arg <- commandArgs(TRUE)
+#arg <- commandArgs(TRUE)
 #make it an integer
-seed <- as.integer(arg)
-
+#seed <- as.integer(arg)
+seed <- 7788
 set.seed(seed)
+
 
 print(seed)
 ##### 3PLM model is defined as:   #####
@@ -17,7 +17,7 @@ print(seed)
 #            1. Setup                 #
 #####-----------------------------#####
 ### Install Packages: ###
-pacman::p_load(tidyverse, truncnorm, R2jags, parallel, ggpubr, extraDistr, RColorBrewer)
+pacman::p_load(tidyverse, truncnorm, R2jags, parallel, ggpubr, ggExtra, extraDistr, RColorBrewer)
 
 ### Import and define functions: ###
 source("AI_Reliance_DecisionMaking/Scripts/Simulate_AI_3PLM.R")
@@ -42,15 +42,18 @@ SampleDist <- function(x) {
 
 
 NN <- 5 # Levels of noise-filters to apply to the images
-NL <- 16 # Different images for classification
-NS <- 70 # Number of participants
+NL <- 8 # Different images for classification
+NS <- 40 # Number of participants
 NI <- NN*NL
 NO <- NI*NS
-NAI <- 6
+NAI <- 5
 ### Simulate data with sourced function: ###
 data <- sim_model(nsub = NS, nNoise = NN, L = NL, nAI = NAI)
 
 
+jid = data$jid
+iid = data$iid
+AI_IDX <- 3
 ### Create data list for JAGS ###
 jags_data <- list(
   NO = NO,                             # Number of instances in advice off condition (NI * NS)
@@ -62,29 +65,32 @@ jags_data <- list(
   jid = data$jid,                      # Participant index for observation o
   iid = data$iid,                      # Item index for observation o
   z = data$z,                          # True label for observation o
-  lbl = data$lbl,                      # Human predictions for observation o
-  ai_lbl = as.matrix(data[12:(11+NAI)]),  # AI model predictions (matrix with NO rows and NAI columns)
-  ai_hum_lbl =  as.matrix(data[(12+NAI):(11+2*NAI)])
-)
+  ai_hum_lbl = as.matrix(data[(12+(NAI*1)):(11+2*NAI)]) # data[11+(NAI*1)+AI_IDX][,1],  
+  )
+
 
 ### Key Latent Parameters returned by model: ###
 params<-c(
   "a",           # a[i]        ability participant i 
   "alpha",       # alpha[i]    AI reliance participant i
+  "alpha_sd",    # proxy StdDev of alpha
   "s",           # s[j]        discrimination parameter item j
   "d",           # d[j]        difficulty item j
   "theta",       # theta[o]    human skill of predicting observation o
-  "pst_lbl",     # pst_lbl[o]  sampled distribution from posterior lbl choice distribution
-  "p_correct",    # p_correct[o] prob correct for model o
-  "pst_ai_lbl")   # pst_ai_lbl[o,a] sampled distribution from posterior ai assistance lbl choice distribution
+  "ai_theta",    # ai_theta[o, ai] of ai
+  "probs_correct",    # p_correct[o, ai] prob correct for model o
+  "pst_ai_lbl",   # pst_ai_lbl[o,ai] sampled distribution from posterior ai assistance lbl choice distribution
+  "ai_theta_mean",
+  "ai_theta_std")
 
 
 
 
 ### Specif<- the path to your model file ###
-model_file <- "AI_Reliance_DecisionMaking/Models/IRT_AI_3PLM.txt"
+# model_file <- "AI_Reliance_DecisionMaking/Models/IRT_AI_3PLM.txt"
 # model_file <- "AI_Reliance_DecisionMaking/Models/IRT_SingleAI_3PLM.txt"
-
+# model_file <- "AI_Reliance_DecisionMaking/Models/Simplified_IRT_3PLM.txt"
+model_file <- "AI_Reliance_DecisionMaking/Models/Simplified_IRT_3PLM_noHum.txt"
 #####-----------------------------#####
 #     3. Compile and run JAGS         #
 #####-----------------------------#####
@@ -100,26 +106,34 @@ samples <- jags.parallel(
   model.file = model_file, 
   n.chains= 3, n.iter=3000, n.burnin=1000, n.thin=1)
 
-
 # stop timer and print time
 total_time_string <- paste("Sampling done after:", (proc.time() - start_time)[3], "seconds." ) 
 print(total_time_string)
 Y <- samples$BUGSoutput$sims.list
-save_posterior <- saveRDS(object = samples, file = "AI_Reliance_DecisionMaking/Models/IRT_AI_3PLM_output.Rdata")
+save_posterior <- saveRDS(object = samples, file = "AI_Reliance_DecisionMaking/Models/Output_Simplified_5_hirar_onlyHUMAI.Rdata")
+print("Saved the plot")
+break
 #####-----------------------------#####
 #      3. Plots and analysis          #
 #####-----------------------------#####
 
 
+if (F){
+  samples <- readRDS("AI_Reliance_DecisionMaking/Models/Output_Simplified_5_hirar_onlyHUMAI.Rdata")
+  Y <- samples$BUGSoutput$sims.list
+}
+
+
 ### Save true parameters in arrays ###
 index_participants <- seq(1, nrow(data), by = NI) #Index every 100th observation
 true_a <-      data$a[index_participants] 
-true_alpha <-  data$alpha[index_participants]
+true_alpha <-  data$alpha
 true_s <-      data$s[1:NI]
 true_d <-      data$d[1:NI]
+true_ai_theta <- as.matrix(data[(12+3*NAI):(11+4*NAI)])
 true_theta <-  data$theta
 true_lbl <-    data$z
-true_humai_odds <- as.matrix(data[(12+2*NAI):(11+3*NAI)])
+true_humai_odds <- true_theta*(1-true_alpha) +true_alpha*true_ai_theta
 true_humai_lbl <- as.matrix(data[(12+NAI):(11+2*NAI)])
 
 
@@ -129,13 +143,23 @@ true_humai_lbl <- as.matrix(data[(12+NAI):(11+2*NAI)])
 ### Save Maximums of posterior densitites in arrays ###
 Y <- samples$BUGSoutput$sims.list
 infer_a <- apply(Y$a, 2, MPD)
-infer_alpha <- apply(Y$alpha, 2, MPD)
+#infer_alpha <- apply(Y$alpha, 2, MPD)
 infer_s <- apply(Y$s, 2, MPD)
 infer_d <- apply(Y$d, 2, MPD)
-infer_theta <- apply(Y$theta, 2, MPD)
-infer_lbl <- apply(Y$pst_lbl, 2, SampleDist)
-infer_humai_odds <-  apply(Y$p_correct, c(2, 3), MPD)
-infer_humai_lbl <- apply(Y$pst_ai_lbl, c(2, 3), SampleDist)
+#infer_ai_theta <- apply(Y$ai_theta, 2, MPD)
+infer_theta <-  pmin(pmax(apply(Y$theta, 2, MPD), 0.000001), 1)
+infer_lbl <- apply(Y$pst_ai_lbl, 2, SampleDist)
+infer_alpha_sd <- apply(Y$alpha_sd, 2, MPD)
+# infer_humai_odds <-  infer_theta*(1-infer_alpha)+infer_alpha*infer_ai_theta #apply(Y$, c(2, 3), MPD)
+# infer_humai_lbl <- apply(Y$pst_ai_lbl, c(2, 3), SampleDist)
+
+infer_mean_ai_theta <- infer_a <- apply(Y$ai_theta_mean, 2, MPD)
+infer_std_ai_theta <- infer_a <- apply(Y$ai_theta_std, 2, MPD)
+
+infer_alpha <-  sapply(1:dim(Y$alpha)[3], function(layer) {apply(Y$alpha[,,layer], 2, MPD)})
+infer_ai_theta <- sapply(1:dim(Y$ai_theta)[3], function(layer) {apply(Y$ai_theta[,,layer], 2, MPD)})
+infer_humai_odds <-  infer_theta*(1-infer_alpha)+infer_alpha*infer_ai_theta
+infer_humai_lbl <- sapply(1:dim(Y$pst_ai_lbl)[3], function(layer) {apply(Y$pst_ai_lbl[,,layer], 2, SampleDist)})
 
 
 # Combine true and inferred parameters into a single data frame
@@ -143,178 +167,152 @@ sample_indices <- sample(seq_along(true_theta), round(sqrt(length(jid))))  # Ran
 AI_Thetas <- as.numeric(unlist(strsplit(data$ai_theta_string[1], ",")))
 
 
-sample_dataframe <- data.frame(
-  Participant_Index = seq_len(length(sample_indices)),
-  True_Ability = true_a[iid[sample_indices]],
-  Inferred_Ability = infer_a[iid[sample_indices]],
-  True_Alpha = true_alpha[iid[sample_indices]],
-  Inferred_Alpha = infer_alpha[iid[sample_indices]],
-  True_Discrimination = true_s[jid[sample_indices]],
-  Inferred_Discrimination = infer_s[jid[sample_indices]],
-  True_Difficulty = true_d[jid[sample_indices]],
-  Inferred_Difficulty = infer_d[jid[sample_indices]],
-  True_Theta = true_theta[sample_indices],
-  Inferred_Theta = infer_theta[sample_indices],
-  True_Label = true_lbl[sample_indices],
-  Inferred_Label = infer_lbl[sample_indices]
-)
-
 ### -------------------------------------------------------- ###
 ##                      Parameter recovery:                   ##
 ##            For Theta and underlying psychometrics          ##
 ### -------------------------------------------------------- ###
 
 pl1 <- recov_plot(
-  true = sample_dataframe$True_Ability,
-  infer = sample_dataframe$Inferred_Ability,
-  plot_lab = c('True Ability', 'Inferred Ability'),
+  true = true_a,
+  infer =infer_a,
+  plot_lab = c('True', 'Inferred'),
   palette_name = 'Set1',
-  color_index = 1
+  color_index = 1,
+  plot_title = "All 40 Ability recoveries"
 )
 pl2 <- recov_plot(
-  true = sample_dataframe$True_Discrimination,
-  infer = sample_dataframe$Inferred_Discrimination,
-  plot_lab = c('True Discrimination', 'Inferred Discrimination'),
+  true = true_s,
+  infer = infer_s,
+  plot_lab = c('True', 'Inferred'),
   palette_name = 'Set1',
-  color_index = 2
+  color_index = 2,
+  plot_title = "All 40 Discrimination recoveries"
 )
 pl3 <- recov_plot(
-  true = sample_dataframe$True_Difficulty,
-  infer = sample_dataframe$Inferred_Difficulty,
-  plot_lab = c('True Difficulty', 'Inferred Difficulty'),
+  true = true_d,
+  infer = infer_d,
+  plot_lab = c('True', 'Inferred'),
   palette_name = 'Set1',
-  color_index = 3
+  color_index = 3,
+  plot_title = "All 40 Difficulty recoveries "
 )
 pl4 <- recov_plot(
-  true = sample_dataframe$True_Theta,
-  infer = sample_dataframe$Inferred_Theta,
-  plot_lab = c('True Theta', 'Inferred Theta'),
+  true = true_theta,
+  infer = infer_theta,
+  plot_lab = c('True', 'Inferred'),
   palette_name = 'Set1',
-  color_index = 4
+  color_index = 4,
+  plot_title = "2500 samples of Theta",
+  num_points = 2500
 )
-pl5 <- recov_plot(
-  true = sample_dataframe$True_Alpha,
-  infer = sample_dataframe$Inferred_Alpha,
-  plot_lab = c('True Alpha', 'Inferred Alpha'),
-  palette_name = 'Set1',
-  color_index = 5
+pl5 <- recov_plot_vector_matrix(
+  true = true_alpha,
+  infer = infer_alpha,
+  plot_lab = c('True', 'Inferred'),
+  plot_title = "500 Alpha samples for each model",
+  num_points = 500
+)
+
+pl6 <- recov_plot_long(
+  true = true_ai_theta, 
+  infer = infer_ai_theta, 
+  plot_lab = c('True AI Theta', 'Inferred AI Theta'),
+  plot_title = "500 AI Theta samples for each model",
+  num_points = 500
 )
 
 
-combined_recovery <- ggarrange(pl1, pl2, pl3, pl4, pl5, ncol = 3, nrow = 2)
+
+combined_recovery <- ggarrange(pl1, pl2, pl3, pl4, pl5, pl6, ncol = 3, nrow = 2)
+
 ggsave(
-  "AI_Reliance_DecisionMaking/Plots/AI_3PLM/parameter_recovery_1500x1000_samples.png",
+  "AI_Reliance_DecisionMaking/Plots/AI_3PLM/5simple_parameter_recovery_1500x1000_samples.png",
   plot = combined_recovery,
   width = 21,
   height = 14,
   units = "in",
   dpi = 300
 )
+print("Saved Recovery_Plot: as 5simple_parameter")
 
+ai_theta_split <- recov_plot_long_split(
+  true = true_ai_theta, 
+  infer = infer_ai_theta, 
+  plot_lab = c('True AI Theta', 'Inferred AI Theta'),
+  plot_title = "AI Theta Comparison",
+  num_points = 500,
+  model_colors = c("red", "blue", "green", "purple", "orange")
+)
 # Create AI Theta
 
+
 source("AI_Reliance_DecisionMaking/Scripts/recov_plot_matrix.R")
-HUMAI_ODDS_ggarrange <- recov_plot_ggarrange(
-  true = true_humai_odds,
-  infer = infer_humai_odds,
-  plot_lab =  c("True Odds", "Inferred Odds"),
-  AI_Thetas = AI_Thetas
+
+plt_odds_1 <- recov_plot_long_unsplit(
+  true = true_humai_odds, 
+  infer = infer_humai_odds, 
+  plot_lab = c('True AI Odds', 'Inferred AI Odds'),
+  palette_name = 'Set1',
+  color_index = 7,
+  plot_title = "2500 samples of AI Odds recovery",
+  num_points = 2500
 )
 
-ggsave(
-  "AI_Reliance_DecisionMaking/Plots/AI_3PLM/humai_odds_arrange.png",
-  plot = HUMAI_ODDS_ggarrange,
+alpha_recovery <- recov_plot_long_split(
+  true =  matrix(rep(true_alpha, 5), ncol = 5, byrow = FALSE), 
+  infer = infer_alpha, 
+  plot_lab = c('True AI Odds', 'Inferred AI Odds'),
+  plot_title = "500 samples of AI Odds recovery",
+  num_points = 500,
+  model_colors = c("red", "blue", "green", "purple", "orange")
 )
 
-### -------------------------------------------------------- ###
-##                    Predictive Accuracy:                    ##
-##            From sampled labels from posterior              ##
-### -------------------------------------------------------- ###
-### CREATE CORRECT PREDITIONS PLOT ###
-# Create a confusion matrix
-conf_matrix <- table(true_lbl, infer_lbl)
-correct <- diag(conf_matrix)
+recov_plot_color(
+  true = true_alpha,
+  infer = infer_alpha[,5],
+  plot_lab = c('True', 'Inferred'),
+  color = "orange",
+  plot_title = " ",
+  num_points = 500
+)
 
-# Create a data frame for plotting
-correct_df <- data.frame(Label = factor(names(correct), levels = 1:NL), Count = as.numeric(as.numeric(correct)/table(true_lbl)))
 
-# Plot correct predictions
-custom_blues <- colorRampPalette(c("lightblue", "#00468b"))(NL)
-correct_plt <- ggplot(correct_df, aes(x = Label, y = Count, fill = Label)) +
-  geom_bar(stat = "identity", color = "black") +
-  scale_fill_manual(values = custom_blues, name = "Category") +
-  labs(
-    title = "Correct Predictions",
-    x = "Category",
-    y = "Frequency") +
+
+
+
+
+######### BY AI MODEL:   ###########
+### Save Maximums of posterior densitites in arrays ###
+Y <- samples$BUGSoutput$sims.list
+infer_alpha <- apply(Y$alpha, c(2, 3), MPD)
+infer_ai_theta <- apply(Y$ai_theta, c(2, 3), MPD)
+infer_theta <- apply(Y$theta, c(2), MPD)
+infer_humai_odds <-  infer_theta*(1-infer_alpha)+infer_alpha*infer_ai_theta #apply(Y$, c(2, 3), MPD)
+infer_humai_lbl <- apply(Y$pst_ai_lbl, c(2, 3), SampleDist)
+
+
+
+
+
+
+
+# Reshape data for ggplot
+df <- data.frame(true_theta, true_ai_theta)
+colnames(df) <- c("infer_theta", paste0("AI_", 1:5)) # Rename columns
+pacman::p_load(reshape2) # For reshaping the data
+df_long <- melt(df, id.vars = "infer_theta", 
+                variable.name = "Model", 
+                value.name = "AI_Theta") # Convert to long format
+
+# Plot with ggplot
+ggplot(df_long, aes(x = infer_theta, y = AI_Theta, color = Model)) +
+  geom_point(alpha = 0.2) +  # Add data points
+  geom_smooth(method = "lm", se = TRUE) +  # Add regression lines
+  labs(title = "Linear Models of actual AI Theta against Human Theta",
+       x = "True Human Theta", y = "True AI Theta") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-### CREATE INCORRECT PREDICTIONS PLOT ###
-# Subset the confusion matrix to exclude diagonal (incorrect predictions)
-incorrect_matrix <- conf_matrix
-diag(incorrect_matrix) <- -1
-
-# Convert the incorrect matrix to a data frame for plotting
-incorrect_df <- as.data.frame(as.table(incorrect_matrix))
-
-# Remove zero entries for clarity
-incorrect_df <- incorrect_df[incorrect_df$Freq >= 0, ]
-
-# Plot incorrect predictions as a heatmap
-incorrect_plt <- ggplot(incorrect_df, aes(x = infer_lbl, y = true_lbl, fill = Freq)) +
-  geom_tile(color = "white") +
-  scale_fill_gradient(low = "lightblue", high = "darkblue", name = "Count") +
-  labs(
-    title = "Incorrect Predictions",
-    x = "Inferred Label",
-    y = "True Label"
-  ) +
-  theme_minimal()
+  scale_color_manual(values = c("red", "blue", "green", "purple", "orange")) +
+  theme(legend.title = element_blank())
 
 
-
-# Create theoretical accuracy as a function of binned odds
-accuracy_by_odds <- data.frame(
-  Inferred_Odds = infer_theta,
-  Predicted_Correct = (infer_lbl == true_lbl),
-  Actual_Theta = true_theta) %>%
-  mutate(Binned_Odds = cut(Inferred_Odds, breaks = seq(0, 1, by = 0.05), include.lowest = TRUE)) %>%
-  group_by(Binned_Odds) %>%
-  summarize(
-    Accuracy = mean(Predicted_Correct) * 100, 
-    Count = n(),
-    True_Theta = mean(Actual_Theta)*100
-  )
-
-theoretical_accuracy <- data.frame(
-  Binned_Odds = levels(accuracy_by_odds$Binned_Odds),  # Same bins as accuracy_by_odds
-  Theoretical_Accuracy = seq(5, 95, length.out = length(levels(accuracy_by_odds$Binned_Odds))) # Replace with your function or values
-)
-percentage_correct <- ggplot(accuracy_by_odds, aes(x = Binned_Odds)) +
-  geom_bar(aes(y = Accuracy), stat = "identity", fill = "steelblue", alpha = 0.7) +
-  geom_point(data = theoretical_accuracy, aes(x = Binned_Odds, y = Theoretical_Accuracy, color = "Theoretical Accuracy"), 
-             size = 2) +
-  geom_line(data = theoretical_accuracy, aes(x = Binned_Odds, y = Theoretical_Accuracy, group = 1, color = "Theoretical Accuracy"), 
-            linetype = "dashed") +
-  geom_point(data = accuracy_by_odds, aes(x = Binned_Odds, y = True_Theta, color = "True Theta"), 
-             size = 2) +
-  geom_line(data = accuracy_by_odds, aes(x = Binned_Odds, y = True_Theta, group = 1, color = "True Theta"), 
-            linetype = "dashed") +
-  labs(
-    title = "Percentage of Correct Predictions by Binned Inferred Odds",
-    x = "Binned Inferred Theta",
-    y = "Percentage Correct"
-  ) +
-  scale_color_manual(
-    values = c("Theoretical Accuracy" = "red", "True Theta" = "orange")
-  ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  theme(legend.title = element_blank(), legend.position = "top")
-
-
-### PLOT ALL THREE PLOTS ###
-accuracy <- ggarrange(plotlist = list(correct_plt, incorrect_plt, percentage_correct), nrow = 1)
-ggsave("AI_Reliance_DecisionMaking/Plots/AI_3PLM/accuracy_21x7.png", plot = accuracy, width = 21, height = 7, units = "in", dpi = 300)
 

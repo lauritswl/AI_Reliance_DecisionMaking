@@ -25,10 +25,9 @@ model{
   ### Participant (i) priors:
   for (i in 1:NS) {
     a[i] ~ dnorm(0, 2)                            # Ability
-      # AI reliance
+    
   }                                        # Exit participant i
 
-  alpha_sd ~ dnorm(10, 1)
 
   #################################
   ### 2. Causal Model for AI:    ###
@@ -38,15 +37,13 @@ model{
     logoddstheta[o] <- s[jid[o]] * (a[iid[o]] - d[jid[o]])
     theta[o] <- 1 / (1 + exp(-logoddstheta[o]))
     ai_theta[o] ~ dbeta(2,2)T(0.001,0.999)
-    
-    alpha[o] ~ dbeta(alpha_sd*ai_theta[o], alpha_sd*theta[o])T(0.001,0.999)
-    probs_correct[o] <- theta[o]*(1-alpha[o]) + alpha[o]*ai_theta[o]
+    alpha[o] ~ dbeta(10*ai_theta[o], 10*theta[o])T(0.001,0.999)
+
     
     ### Define AI assisted choice:
     for (l in 1:NL) {
-      dlblHumAI[o, l] <- ifelse(z[o] == l, probs_correct[o], (1-probs_correct[o])/(NL-1))
+      dlbl[o, l] <- ifelse(z[o] == l, theta[o], (1-theta[o])/(NL-1))
       dlblAI[o, l] <- ifelse(z[o] == l, ai_theta[o], (1-ai_theta[o])/(NL-1))
-      dlbl[o,l] <- ifelse(z[o] == l, theta[o], (1-theta[o])/(NL-1))
     } # exit label l                                                                         
 
     ### Define AI-assisted decision probabilities:
@@ -59,14 +56,7 @@ model{
     lbl[o] ~ dcat(dlbl[o, 1:NL])
     ai_lbl[o] ~ dcat(dlblAI[o, 1:NL]) # fit to label
     
-    
-    
-    #pst_lbl[o] ~  dcat(dlbl[o, 1:NL]) # Sample a posterior label from label distribution    
-    
 
-    ### Likelihood for AI-assisted decisions:
-    ai_hum_lbl[o] ~ dcat(dlblHumAI[o, 1:NL]) # fit to label
-    pst_ai_lbl[o] ~ dcat(dlblHumAI[o, 1:NL]) # Sample a posterior label from label distribution
   } # exit observations, o
 } # exit model
 

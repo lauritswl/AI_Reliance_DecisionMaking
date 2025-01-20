@@ -193,7 +193,7 @@ pl6 <- recov_plot(
 
 combined_recovery <- ggarrange(pl1, pl2, pl3, pl4, pl5, pl6, ncol = 3, nrow = 2)
 ggsave(
-  "AI_Reliance_DecisionMaking/Plots/3PLM/parameter_recovery_1500x1000_samples.png",
+  "AI_Reliance_DecisionMaking/Plots/3PLM/parameter_recovery_1500x1000_samples_update.png",
   plot = combined_recovery,
   width = 21,
   height = 14,
@@ -292,7 +292,7 @@ percentage_correct <- ggplot(accuracy_by_odds, aes(x = Binned_Odds)) +
 
 ### PLOT ALL THREE PLOTS ###
 accuracy <- ggarrange(plotlist = list(correct_plt, incorrect_plt, percentage_correct), nrow = 1)
-ggsave("AI_Reliance_DecisionMaking/Plots/3PLM/accuracy_21x7.png", plot = accuracy, width = 21, height = 7, units = "in", dpi = 300)
+ggsave("AI_Reliance_DecisionMaking/Plots/3PLM/accuracy_21x7_update.png", plot = accuracy, width = 21, height = 7, units = "in", dpi = 300)
 
 
 
@@ -356,7 +356,7 @@ pl12 <- recov_stretch_plot(
 
 combined_relation <- ggarrange(pl7, pl8, pl9, pl10, pl11, pl12, ncol = 3, nrow = 2)
 ggsave(
-  "AI_Reliance_DecisionMaking/Plots/3PLM/odds_theta_eta_relation_1500x1000_samples.png",
+  "AI_Reliance_DecisionMaking/Plots/3PLM/odds_theta_eta_relation_1500x1000_update_samples.png",
   plot = combined_relation,
   width = 21,
   height = 14,

@@ -38,7 +38,7 @@ model{
   
   for (o in 1:NO) { 
     ### Define theta ###         
-    logoddstheta[o] <- s[jid[o]] * a[iid[o]] - d[jid[o]]
+    logoddstheta[o] <- s[jid[o]]* (a[iid[o]] - d[jid[o]])
     theta[o] <- 1 / ( 1 + exp( -logoddstheta[o] ))
  
     for (l in 1:NL) {

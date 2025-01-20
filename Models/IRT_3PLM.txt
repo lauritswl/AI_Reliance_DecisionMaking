@@ -39,7 +39,7 @@ model{
   
   for (o in 1:NO) { 
     ### Define theta ###         
-    logoddstheta[o] <- s[jid[o]] * a[iid[o]] - d[jid[o]]
+    logoddstheta[o] <- s[jid[o]]*(a[iid[o]] - d[jid[o]])
     theta[o] <- 1 / ( 1 + exp( -logoddstheta[o] ))
     prob_z[o] <- eta[jid[o]] + (1-(eta[jid[o]])) * theta[o]
     

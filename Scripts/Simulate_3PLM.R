@@ -20,29 +20,29 @@ sim_model <- function(nsub, nNoise, L){
   j$noise_level <- sample(rep(1:nNoise, each = L))
   j$d <- 4 - 8*(j$noise_level/(nNoise+1)) + runif(n = nimg, min = -1, 1) # Image difficulty
   j$s <- truncnorm::rtruncnorm(n = nimg, mean = 1, sd = 1, a = 0) # Discrimination parameter
-  j$eta <- rbeta(n= nimg, shape1 = (1/L)*20, shape2 = 20-(1/L)*20) # Guessing ability varies from 0 to double the chance level
+   # Guessing ability varies from 0 to double the chance level
   
   
   #####--------------------------------------#####
   #####   3. Generate trial parameters       #####
   #####--------------------------------------#####
   ij <- list()
-  ij$logodds <- j$s[jid] * i$a[iid] - j$d[jid] # Create all combinations of logodds
+  ij$logodds <- j$s[jid]*(i$a[iid] - j$d[jid]) # Create all combinations of logodds
   ij$theta <- 1 / (1 + exp(-ij$logodds))  # Find theta (probability correct)
-  ij$prob_z <-  j$eta[jid] +  (1- j$eta[jid])*ij$theta
+  ij$eta <- rbeta(n= ntrials, shape1 = (1/L)*20, shape2 = 20-(1/L)*20)
+  ij$prob_z <-  ij$eta +  (1- ij$eta)*ij$theta
   ### Record choices: ###
   ij$z <- j$z[jid]
   ij$not_z <- sapply(ij$z, function(z_val) sample(setdiff(labels, z_val), size = 1))
   ij$label <- ifelse(runif(n = ntrials) < ij$prob_z, # Prob of picking correct
                      ij$z, # Correct label
                      ij$not_z) # Incorrect label
-  
-  
+
   #####--------------------------------------#####
   #####          4. Return Results           #####
   #####--------------------------------------#####
   
   ### Saving Key Latent Parameters and Predictions for recovery ###
-  parameters <- tibble(iid = iid, jid = jid, a = i$a[iid], s = j$s[jid], d = j$d[jid], theta = ij$theta, eta = j$eta[jid], prob_z = ij$prob_z, lbl = ij$label, z = ij$z)
+  parameters <- tibble(iid = iid, jid = jid, a = i$a[iid], s = j$s[jid], d = j$d[jid], theta = ij$theta, eta = ij$eta, prob_z = ij$prob_z, lbl = ij$label, z = ij$z)
   return(parameters)
 }

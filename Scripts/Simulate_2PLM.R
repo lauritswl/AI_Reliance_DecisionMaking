@@ -26,7 +26,7 @@ sim_model <- function(nsub, nNoise, L){
   #####   3. Generate trial parameters       #####
   #####--------------------------------------#####
   ij <- list()
-  ij$logodds <- j$s[jid] * i$a[iid] - j$d[jid] # Create all combinations of logodds
+  ij$logodds <- j$s[jid]* (i$a[iid] - j$d[jid]) # Create all combinations of logodds
   ij$theta <- 1 / (1 + exp(-ij$logodds))  # Find theta (probability correct)
   
   ### Record choices: ###

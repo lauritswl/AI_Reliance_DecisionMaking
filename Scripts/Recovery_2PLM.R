@@ -19,9 +19,7 @@ SampleDist <- function(x) {
   sample(x = x, size = 1)
 }
 
-### Set a seed for replication ###
-set.seed(88778)
-
+set.seed(7788)
 
 #####-----------------------------#####
 #      2. Simulate and wrangle        #
